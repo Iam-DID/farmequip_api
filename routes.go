@@ -26,21 +26,29 @@ func CorsMiddleware(next http.Handler) http.Handler {
 
 func SetupRoutes(db *sql.DB) {
     r := mux.NewRouter()
+
     r.Use(CorsMiddleware)
 
-	//auth
+    r.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        w.WriteHeader(http.StatusOK)
+    })
+
+    // Login
     r.HandleFunc("/login", handlers.Login(db)).Methods("POST")
 
-	//user
+    // Users
     r.HandleFunc("/users", handlers.UpdateUser(db)).Methods("PUT")
 
-	//kategori
+    // Kategori
     r.HandleFunc("/kategori", handlers.GetKategori(db)).Methods("GET")
     r.HandleFunc("/kategori", handlers.CreateKategori(db)).Methods("POST")
     r.HandleFunc("/kategori", handlers.UpdateKategori(db)).Methods("PUT")
     r.HandleFunc("/kategori", handlers.DeleteKategori(db)).Methods("DELETE")
 
-	//alat
+    // Alat
     r.HandleFunc("/alat", handlers.GetAlat(db)).Methods("GET")
     r.HandleFunc("/alat", handlers.CreateAlat(db)).Methods("POST")
     r.HandleFunc("/alat", handlers.UpdateAlat(db)).Methods("PUT")
