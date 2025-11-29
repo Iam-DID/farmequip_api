@@ -99,17 +99,58 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		id := mux.Vars(r)["id"]
 
-		row := db.QueryRow("SELECT id, nama_alat, kategori_id, deskripsi, harga_per_hari, harga_per_minggu, harga_per_bulan, gambar FROM alat_pertanian WHERE id = ?", id)
+		rows, err := db.Query(`
+            SELECT 
+                id,
+                nama_alat,
+                kategori_id,
+                deskripsi,
+                harga_per_hari,
+                harga_per_minggu,
+                harga_per_bulan,
+                gambar
+            FROM alat_pertanian 
+            WHERE id = ?
+        `, id)
 
-		var alat models.Alat
-
-		err := row.Scan(&alat.ID, &alat.NamaAlat, &alat.KategoriID, &alat.Deskripsi, &alat.HargaHarian, &alat.HargaMingguan, &alat.HargaBulanan, alat.Gambar)
 		if err != nil {
-			http.Error(w, "Alat tidak ditemukan", http.StatusNotFound)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		defer rows.Close()
+
+		var list []models.Alat
+
+		for rows.Next() {
+			var a models.Alat
+			var imgBytes []byte
+
+			err := rows.Scan(
+				&a.ID,
+				&a.NamaAlat,
+				&a.KategoriID,
+				&a.Deskripsi,
+				&a.HargaHarian,
+				&a.HargaMingguan,
+				&a.HargaBulanan,
+				&imgBytes,
+			)
+			if err != nil {
+				w.Write([]byte(err.Error()))
+				return
+			}
+
+			a.Gambar = base64.StdEncoding.EncodeToString(imgBytes)
+
+			list = append(list, a)
+		}
+
+		if len(list) == 0 {
+			w.Write([]byte("Tidak ada alat dengan id ini"))
 			return
 		}
 
-		json.NewEncoder(w).Encode(alat)
+		json.NewEncoder(w).Encode(list)
 	}
 }
 
