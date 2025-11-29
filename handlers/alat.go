@@ -99,19 +99,11 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		id := mux.Vars(r)["id"]
 
-		row := db.QueryRow("SELECT id, nama_alat, kategori_id, deskripsi, harga_per_hari, harga_per_minggu, harga_per_bulan FROM alat_pertanian WHERE id = ?", id)
+		row := db.QueryRow("SELECT id, nama_alat, kategori_id, deskripsi, harga_per_hari, harga_per_minggu, harga_per_bulan, gambar FROM alat_pertanian WHERE id = ?", id)
 
-		var alat struct {
-			ID         int    `json:"id"`
-			Nama       string `json:"nama_alat"`
-			KategoriID int    `json:"kategori_id"`
-			Deskripsi  string `json:"deskripsi"`
-			Hari       int    `json:"harga_per_hari"`
-			Minggu     int    `json:"harga_per_minggu"`
-			Bulan      int    `json:"harga_per_bulan"`
-		}
+		var alat models.Alat
 
-		err := row.Scan(&alat.ID, &alat.Nama, &alat.KategoriID, &alat.Deskripsi, &alat.Hari, &alat.Minggu, &alat.Bulan)
+		err := row.Scan(&alat.ID, &alat.NamaAlat, &alat.KategoriID, &alat.Deskripsi, &alat.HargaHarian, &alat.HargaMingguan, &alat.HargaBulanan, alat.Gambar)
 		if err != nil {
 			http.Error(w, "Alat tidak ditemukan", http.StatusNotFound)
 			return
