@@ -29,7 +29,8 @@ func GetAlat(db *sql.DB) http.HandlerFunc {
                 a.harga_per_hari,
                 a.harga_per_minggu,
                 a.harga_per_bulan,
-                a.gambar
+                a.gambar,
+				a.spesifikasi
             FROM alat_pertanian a
             JOIN kategori k ON k.id = a.kategori_id
         `)
@@ -56,6 +57,7 @@ func GetAlat(db *sql.DB) http.HandlerFunc {
 				&a.HargaMingguan,
 				&a.HargaBulanan,
 				&imgBytes,
+				&a.Spesifikasi,
 			)
 			if err != nil {
 				w.Write([]byte(err.Error()))
@@ -101,16 +103,18 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 
 		rows, err := db.Query(`
             SELECT 
-                id,
-                nama_alat,
-                kategori_id,
-                deskripsi,
-                harga_per_hari,
-                harga_per_minggu,
-                harga_per_bulan,
-                gambar
-            FROM alat_pertanian 
-            WHERE id = ?
+                a.id,
+                a.nama_alat,
+                a.kategori_id,
+                a.deskripsi,
+                a.harga_per_hari,
+                a.harga_per_minggu,
+                a.harga_per_bulan,
+                a.gambar,
+				a.spesifikasi
+            FROM alat_pertanian a
+            JOIN kategori k ON a.kategori_id = k.id
+            WHERE a.id = ?
         `, id)
 
 		if err != nil {
@@ -129,11 +133,13 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 				&a.ID,
 				&a.NamaAlat,
 				&a.KategoriID,
+				&a.NamaKategori,
 				&a.Deskripsi,
 				&a.HargaHarian,
 				&a.HargaMingguan,
 				&a.HargaBulanan,
 				&imgBytes,
+				&a.Spesifikasi,
 			)
 			if err != nil {
 				w.Write([]byte(err.Error()))
@@ -146,7 +152,7 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 		}
 
 		if len(list) == 0 {
-			w.Write([]byte("Tidak ada alat dengan id ini"))
+			w.Write([]byte("Tidak ada alat dalam kategori ini"))
 			return
 		}
 
@@ -165,6 +171,7 @@ func CreateAlat(db *sql.DB) http.HandlerFunc {
 		hari := r.FormValue("harga_per_hari")
 		minggu := r.FormValue("harga_per_minggu")
 		bulan := r.FormValue("harga_per_bulan")
+		spesifikasi := r.FormValue("spesifikasi")
 
 		// Gambar
 		file, _, err := r.FormFile("gambar")
@@ -178,9 +185,9 @@ func CreateAlat(db *sql.DB) http.HandlerFunc {
 
 		_, err = db.Exec(`
 			INSERT INTO alat_pertanian 
-			(nama_alat, kategori_id, deskripsi, harga_per_hari, harga_per_minggu, harga_per_bulan, gambar)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`, nama, kategori, deskripsi, hari, minggu, bulan, gambar)
+			(nama_alat, kategori_id, deskripsi, harga_per_hari, harga_per_minggu, harga_per_bulan, gambar, spesifikasi)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, nama, kategori, deskripsi, hari, minggu, bulan, gambar, spesifikasi)
 
 		if err != nil {
 			w.Write([]byte(err.Error()))
@@ -211,6 +218,7 @@ func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
                 a.harga_per_minggu,
                 a.harga_per_bulan,
                 a.gambar
+				a.spesifikasi
             FROM alat_pertanian a
             JOIN kategori k ON a.kategori_id = k.id
             WHERE k.slug = ?
@@ -238,6 +246,7 @@ func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
 				&a.HargaMingguan,
 				&a.HargaBulanan,
 				&imgBytes,
+				&a.Spesifikasi,
 			)
 			if err != nil {
 				w.Write([]byte(err.Error()))
@@ -275,7 +284,7 @@ func UpdateAlat(db *sql.DB) http.HandlerFunc {
 		hari := r.FormValue("harga_per_hari")
 		minggu := r.FormValue("harga_per_minggu")
 		bulan := r.FormValue("harga_per_bulan")
-
+		spesifikasi := r.FormValue("spesifikasi")
 		// cek apakah ada file gambar baru
 		var gambar []byte
 		file, _, err := r.FormFile("gambar")
@@ -295,9 +304,9 @@ func UpdateAlat(db *sql.DB) http.HandlerFunc {
 		_, err = db.Exec(`
             UPDATE alat_pertanian
             SET nama_alat = ?, kategori_id = ?, deskripsi = ?, 
-                harga_per_hari = ?, harga_per_minggu = ?, harga_per_bulan = ?, gambar = ?
+                harga_per_hari = ?, harga_per_minggu = ?, harga_per_bulan = ?, gambar = ?, spesifikasi = ?
             WHERE id = ?
-        `, nama, kategori, deskripsi, hari, minggu, bulan, gambar, id)
+        `, nama, kategori, deskripsi, hari, minggu, bulan, gambar, spesifikasi, id)
 
 		if err != nil {
 			w.Write([]byte(err.Error()))
