@@ -218,7 +218,7 @@ func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
                 a.harga_per_hari,
                 a.harga_per_minggu,
                 a.harga_per_bulan,
-                a.gambar
+                a.gambar,
 				a.spesifikasi
             FROM alat_pertanian a
             JOIN kategori k ON a.kategori_id = k.id
