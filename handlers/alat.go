@@ -106,6 +106,7 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
                 a.id,
                 a.nama_alat,
                 a.kategori_id,
+				k.nama_kategori,
                 a.deskripsi,
                 a.harga_per_hari,
                 a.harga_per_minggu,
