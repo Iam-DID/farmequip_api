@@ -142,10 +142,11 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 			list = append(list, a)
 		}
 
-		if len(list) == 0 {
-			w.Write([]byte("Tidak ada alat dalam kategori ini"))
-			return
-		}
+if len(list) == 0 {
+    json.NewEncoder(w).Encode([]models.Alat{})
+    return
+}
+
 
 		json.NewEncoder(w).Encode(list)
 	}
@@ -176,9 +177,10 @@ upload, err := cld.Upload.Upload(
     r.Context(),
     file,
     uploader.UploadParams{
-        PublicID: header.Filename, // root
+        PublicID: header.Filename,
     },
 )
+
 
         if err != nil {
             http.Error(w, "Upload Cloudinary gagal: "+err.Error(), 500)
@@ -298,15 +300,14 @@ func UpdateAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
         if err == nil {
             // Ada gambar baru → upload Cloudinary
             defer file.Close()
+upload, err := cld.Upload.Upload(
+    r.Context(),
+    file,
+    uploader.UploadParams{
+        PublicID: header.Filename,
+    },
+)
 
-            upload, err := cld.Upload.Upload(
-                r.Context(),
-                file,
-                uploader.UploadParams{
-                    Folder:   "/",
-                    PublicID: header.Filename,
-                },
-            )
             if err != nil {
                 http.Error(w, "Gagal upload cloudinary: "+err.Error(), 500)
                 return
