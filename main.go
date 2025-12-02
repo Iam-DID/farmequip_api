@@ -1,22 +1,28 @@
 package main
 
 import (
-	"log"
-	"net/http"
-	"os"
+    "log"
+    "net/http"
+    "os"
+    "farmequip_api/database"
 )
 
 func main() {
-	db := ConnectDB()
-	defer db.Close()
+    db := database.ConnectDB()
+    defer db.Close()
 
-	SetupRoutes(db)
+    cld, err := database.InitCloudinary()
+    if err != nil {
+        log.Fatal("Cloudinary gagal init:", err)
+    }
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+    SetupRoutes(db, cld) // cuma ini yang perlu
 
-	log.Println("Server berjalan di port:", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080"
+    }
+
+    log.Println("Server berjalan di port:", port)
+    log.Fatal(http.ListenAndServe(":"+port, nil))
 }

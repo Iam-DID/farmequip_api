@@ -5,21 +5,22 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"farmequip_api/models"
-	"io"
 	"net/http"
 	"sort"
+	"strings"
 
+	"github.com/cloudinary/cloudinary-go/v2"
+	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/gorilla/mux"
 )
 
 func GetAlat(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+    return func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
 
-		// Ambil query param sort
-		sortParam := r.URL.Query().Get("sort")
+        sortParam := r.URL.Query().Get("sort")
 
-		rows, err := db.Query(`
+        rows, err := db.Query(`
             SELECT 
                 a.id,
                 a.nama_alat,
@@ -30,71 +31,63 @@ func GetAlat(db *sql.DB) http.HandlerFunc {
                 a.harga_per_minggu,
                 a.harga_per_bulan,
                 a.gambar,
-				a.spesifikasi
+                a.spesifikasi
             FROM alat_pertanian a
             JOIN kategori k ON k.id = a.kategori_id
         `)
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
+        defer rows.Close()
 
-		if err != nil {
-			w.Write([]byte(err.Error()))
-			return
-		}
-		defer rows.Close()
+        var list []models.Alat
 
-		var list []models.Alat
+        for rows.Next() {
+            var a models.Alat
+            err := rows.Scan(
+                &a.ID,
+                &a.NamaAlat,
+                &a.KategoriID,
+                &a.NamaKategori,
+                &a.Deskripsi,
+                &a.HargaHarian,
+                &a.HargaMingguan,
+                &a.HargaBulanan,
+                &a.Gambar, // sekarang string URL
+                &a.Spesifikasi,
+            )
+            if err != nil {
+                http.Error(w, err.Error(), 500)
+                return
+            }
 
-		for rows.Next() {
-			var a models.Alat
-			var imgBytes []byte
+            list = append(list, a)
+        }
 
-			err := rows.Scan(
-				&a.ID,
-				&a.NamaAlat,
-				&a.KategoriID,
-				&a.NamaKategori,
-				&a.Deskripsi,
-				&a.HargaHarian,
-				&a.HargaMingguan,
-				&a.HargaBulanan,
-				&imgBytes,
-				&a.Spesifikasi,
-			)
-			if err != nil {
-				w.Write([]byte(err.Error()))
-				return
-			}
+        sort.Slice(list, func(i, j int) bool {
+            switch sortParam {
+            case "nama_asc":
+                return list[i].NamaAlat < list[j].NamaAlat
+            case "nama_desc":
+                return list[i].NamaAlat > list[j].NamaAlat
+            case "harga_asc":
+                return list[i].HargaHarian < list[j].HargaHarian
+            case "harga_desc":
+                return list[i].HargaHarian > list[j].HargaHarian
+            case "newest":
+                return list[i].ID > list[j].ID
+            case "oldest":
+                return list[i].ID < list[j].ID
+            default:
+                return list[i].ID < list[j].ID
+            }
+        })
 
-			a.Gambar = base64.StdEncoding.EncodeToString(imgBytes)
-			list = append(list, a)
-		}
-
-		// ================================
-		// ✨ TRANSFORMASI DATA: SORTING FP
-		// ================================
-		sort.Slice(list, func(i, j int) bool {
-			switch sortParam {
-			case "nama_asc":
-				return list[i].NamaAlat < list[j].NamaAlat
-			case "nama_desc":
-				return list[i].NamaAlat > list[j].NamaAlat
-			case "harga_asc":
-				return list[i].HargaHarian < list[j].HargaHarian
-			case "harga_desc":
-				return list[i].HargaHarian > list[j].HargaHarian
-			case "newest":
-				return list[i].ID > list[j].ID
-			case "oldest":
-				return list[i].ID < list[j].ID
-			default:
-				// default: oldest (ID ascending)
-				return list[i].ID < list[j].ID
-			}
-		})
-
-		// Output JSON
-		json.NewEncoder(w).Encode(list)
-	}
+        json.NewEncoder(w).Encode(list)
+    }
 }
+
 
 func GetToolById(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -161,43 +154,55 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func CreateAlat(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func CreateAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
 
-		r.ParseMultipartForm(10 << 20)
+        r.ParseMultipartForm(10 << 20)
 
-		nama := r.FormValue("nama_alat")
-		kategori := r.FormValue("kategori_id")
-		deskripsi := r.FormValue("deskripsi")
-		hari := r.FormValue("harga_per_hari")
-		minggu := r.FormValue("harga_per_minggu")
-		bulan := r.FormValue("harga_per_bulan")
-		spesifikasi := r.FormValue("spesifikasi")
+        nama := r.FormValue("nama_alat")
+        kategori := r.FormValue("kategori_id")
+        deskripsi := r.FormValue("deskripsi")
+        hari := r.FormValue("harga_per_hari")
+        minggu := r.FormValue("harga_per_minggu")
+        bulan := r.FormValue("harga_per_bulan")
+        spesifikasi := r.FormValue("spesifikasi")
 
-		// Gambar
-		file, _, err := r.FormFile("gambar")
-		if err != nil {
-			w.Write([]byte(err.Error()))
-			return
-		}
-		defer file.Close()
+        file, header, err := r.FormFile("gambar")
+        if err != nil {
+            http.Error(w, "Gambar wajib diupload", 400)
+            return
+        }
+        defer file.Close()
 
-		gambar, _ := io.ReadAll(file)
+        // Upload Cloudinary
+        upload, err := cld.Upload.Upload(
+            r.Context(),
+            file,
+            uploader.UploadParams{
+                Folder:   "/",
+                PublicID: header.Filename,
+            },
+        )
+        if err != nil {
+            http.Error(w, "Upload Cloudinary gagal: "+err.Error(), 500)
+            return
+        }
 
-		_, err = db.Exec(`
-			INSERT INTO alat_pertanian 
-			(nama_alat, kategori_id, deskripsi, harga_per_hari, harga_per_minggu, harga_per_bulan, gambar, spesifikasi)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, nama, kategori, deskripsi, hari, minggu, bulan, gambar, spesifikasi)
+        _, err = db.Exec(`
+            INSERT INTO alat_pertanian 
+            (nama_alat, kategori_id, deskripsi, harga_per_hari, harga_per_minggu, harga_per_bulan, gambar, spesifikasi)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, nama, kategori, deskripsi, hari, minggu, bulan, upload.SecureURL, spesifikasi)
 
-		if err != nil {
-			w.Write([]byte(err.Error()))
-			return
-		}
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
 
-		w.Write([]byte("Alat berhasil ditambahkan"))
-	}
+        w.Write([]byte("Alat berhasil ditambahkan"))
+    }
 }
+
 
 func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -268,71 +273,102 @@ func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func UpdateAlat(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func UpdateAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
 
-		id := r.URL.Query().Get("id")
-		if id == "" {
-			w.Write([]byte("ID alat wajib diisi"))
-			return
-		}
+        id := r.URL.Query().Get("id")
+        if id == "" {
+            http.Error(w, "ID alat wajib diisi", 400)
+            return
+        }
 
-		r.ParseMultipartForm(10 << 20)
+        r.ParseMultipartForm(10 << 20)
 
-		nama := r.FormValue("nama_alat")
-		kategori := r.FormValue("kategori_id")
-		deskripsi := r.FormValue("deskripsi")
-		hari := r.FormValue("harga_per_hari")
-		minggu := r.FormValue("harga_per_minggu")
-		bulan := r.FormValue("harga_per_bulan")
-		spesifikasi := r.FormValue("spesifikasi")
-		// cek apakah ada file gambar baru
-		var gambar []byte
-		file, _, err := r.FormFile("gambar")
+        nama := r.FormValue("nama_alat")
+        kategori := r.FormValue("kategori_id")
+        deskripsi := r.FormValue("deskripsi")
+        hari := r.FormValue("harga_per_hari")
+        minggu := r.FormValue("harga_per_minggu")
+        bulan := r.FormValue("harga_per_bulan")
+        spesifikasi := r.FormValue("spesifikasi")
 
-		if err == nil {
-			defer file.Close()
-			gambar, _ = io.ReadAll(file)
-		} else {
-			// ambil gambar lama kalau tidak upload baru
-			err = db.QueryRow(`SELECT gambar FROM alat_pertanian WHERE id = ?`, id).Scan(&gambar)
-			if err != nil {
-				w.Write([]byte("Gagal mengambil gambar lama: " + err.Error()))
-				return
-			}
-		}
+        // Ambil gambar lama
+        var oldURL string
+        db.QueryRow(`SELECT gambar FROM alat_pertanian WHERE id = ?`, id).Scan(&oldURL)
 
-		_, err = db.Exec(`
+        // Cek ada upload baru?
+        file, header, err := r.FormFile("gambar")
+
+        newURL := oldURL
+
+        if err == nil {
+            // Ada gambar baru → upload Cloudinary
+            defer file.Close()
+
+            upload, err := cld.Upload.Upload(
+                r.Context(),
+                file,
+                uploader.UploadParams{
+                    Folder:   "/",
+                    PublicID: header.Filename,
+                },
+            )
+            if err != nil {
+                http.Error(w, "Gagal upload cloudinary: "+err.Error(), 500)
+                return
+            }
+            newURL = upload.SecureURL
+        }
+
+        _, err = db.Exec(`
             UPDATE alat_pertanian
-            SET nama_alat = ?, kategori_id = ?, deskripsi = ?, 
-                harga_per_hari = ?, harga_per_minggu = ?, harga_per_bulan = ?, gambar = ?, spesifikasi = ?
-            WHERE id = ?
-        `, nama, kategori, deskripsi, hari, minggu, bulan, gambar, spesifikasi, id)
+            SET nama_alat=?, kategori_id=?, deskripsi=?,
+                harga_per_hari=?, harga_per_minggu=?, harga_per_bulan=?,
+                gambar=?, spesifikasi=?
+            WHERE id=?
+        `, nama, kategori, deskripsi, hari, minggu, bulan, newURL, spesifikasi, id)
 
-		if err != nil {
-			w.Write([]byte(err.Error()))
-			return
-		}
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
 
-		w.Write([]byte("Alat berhasil diperbarui"))
-	}
+        w.Write([]byte("Alat berhasil diperbarui"))
+    }
 }
 
-func DeleteAlat(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
 
-		id := r.URL.Query().Get("id")
-		if id == "" {
-			w.Write([]byte("ID alat wajib diisi"))
-			return
-		}
 
-		_, err := db.Exec(`DELETE FROM alat_pertanian WHERE id = ?`, id)
-		if err != nil {
-			w.Write([]byte(err.Error()))
-			return
-		}
+func DeleteAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
 
-		w.Write([]byte("Alat berhasil dihapus"))
-	}
+        id := r.URL.Query().Get("id")
+        if id == "" {
+            http.Error(w, "ID wajib diisi", 400)
+            return
+        }
+
+        var imageURL string
+        db.QueryRow(`SELECT gambar FROM alat_pertanian WHERE id = ?`, id).Scan(&imageURL)
+
+        // hapus cloudinary (jika ada)
+        if imageURL != "" {
+            // contoh: https://res.cloudinary.com/<cloud>/image/upload/farmequip/nama.jpg
+            parts := strings.Split(imageURL, "/")
+            publicID := strings.TrimSuffix(parts[len(parts)-1], ".jpg")
+
+            cld.Upload.Destroy(r.Context(), uploader.DestroyParams{
+                PublicID: "/" + publicID,
+            })
+        }
+
+        _, err := db.Exec(`DELETE FROM alat_pertanian WHERE id = ?`, id)
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
+
+        w.Write([]byte("Alat berhasil dihapus"))
+    }
 }
+

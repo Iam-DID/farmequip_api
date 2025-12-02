@@ -1,13 +1,13 @@
-package main
+package database
 
 import (
 	"database/sql"
 	"fmt"
 	"log"
 	"os"
-
 	_ "github.com/go-sql-driver/mysql"
 )
+
 
 func ConnectDB() *sql.DB {
 	dbUser := os.Getenv("DB_USER")

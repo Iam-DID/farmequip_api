@@ -9,6 +9,6 @@ type Alat struct {
 	HargaHarian   int    `json:"harga_per_hari"`
 	HargaMingguan int    `json:"harga_per_minggu"`
 	HargaBulanan  int    `json:"harga_per_bulan"`
-	Gambar        string `json:"gambar"` // BASE64
+	Gambar        string `json:"gambar"`
 	Spesifikasi	  string `json:"spesifikasi"`
 }

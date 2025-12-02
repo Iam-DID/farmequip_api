@@ -6,6 +6,7 @@ import (
     "net/http"
 
     "github.com/gorilla/mux"
+    "github.com/cloudinary/cloudinary-go/v2"
 )
 
 func CorsMiddleware(next http.Handler) http.Handler {
@@ -24,11 +25,18 @@ func CorsMiddleware(next http.Handler) http.Handler {
     })
 }
 
-func SetupRoutes(db *sql.DB) {
+func Setupcld(cld *cloudinary.Cloudinary) {
+    uploadHandler := handlers.NewUploadHandler(cld)
+
+    http.HandleFunc("/upload", uploadHandler.UploadImage)
+}
+
+func SetupRoutes(db *sql.DB, cld *cloudinary.Cloudinary) {
     r := mux.NewRouter()
 
     r.Use(CorsMiddleware)
 
+    // OPTIONS
     r.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Access-Control-Allow-Origin", "*")
         w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -50,9 +58,9 @@ func SetupRoutes(db *sql.DB) {
 
     // Alat
     r.HandleFunc("/alat", handlers.GetAlat(db)).Methods("GET")
-    r.HandleFunc("/alat", handlers.CreateAlat(db)).Methods("POST")
-    r.HandleFunc("/alat", handlers.UpdateAlat(db)).Methods("PUT")
-    r.HandleFunc("/alat", handlers.DeleteAlat(db)).Methods("DELETE")
+    r.HandleFunc("/alat", handlers.CreateAlat(db, cld)).Methods("POST")   // CLOUDINARY OK
+    r.HandleFunc("/alat", handlers.UpdateAlat(db, cld)).Methods("PUT")   // CLOUDINARY OK
+    r.HandleFunc("/alat", handlers.DeleteAlat(db, cld)).Methods("DELETE") // CLOUDINARY OK
 
     // Detail alat
     r.HandleFunc("/alat/{id:[0-9]+}", handlers.GetToolById(db)).Methods("GET")
