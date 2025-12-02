@@ -372,3 +372,4 @@ func DeleteAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
     }
 }
 
+

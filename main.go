@@ -11,12 +11,20 @@ func main() {
     db := database.ConnectDB()
     defer db.Close()
 
+    // Init Cloudinary
     cld, err := database.InitCloudinary()
     if err != nil {
         log.Fatal("Cloudinary gagal init:", err)
     }
 
-    SetupRoutes(db, cld) // cuma ini yang perlu
+    // Check Cloudinary connection ---- HERE
+    if err := database.CheckCloudinaryConnection(cld); err != nil {
+        log.Fatal(err)
+    }
+    log.Println("Cloudinary connection OK")
+
+    Setupcld(cld)
+    SetupRoutes(db, cld)
 
     port := os.Getenv("PORT")
     if port == "" {
