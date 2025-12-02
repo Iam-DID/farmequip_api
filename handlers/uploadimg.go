@@ -40,7 +40,6 @@ func (h *UploadHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
         context.Background(),
         file,
         uploader.UploadParams{
-            Folder:   "/",
             PublicID: header.Filename,
         },
     )

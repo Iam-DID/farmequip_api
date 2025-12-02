@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"farmequip_api/models"
 	"net/http"
 	"sort"
 	"strings"
+	"fmt"
+	"path/filepath"
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
@@ -121,7 +122,6 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 
 		for rows.Next() {
 			var a models.Alat
-			var imgBytes []byte
 
 			err := rows.Scan(
 				&a.ID,
@@ -132,16 +132,13 @@ func GetToolById(db *sql.DB) http.HandlerFunc {
 				&a.HargaHarian,
 				&a.HargaMingguan,
 				&a.HargaBulanan,
-				&imgBytes,
+				&a.Gambar,
 				&a.Spesifikasi,
 			)
 			if err != nil {
 				w.Write([]byte(err.Error()))
 				return
 			}
-
-			a.Gambar = base64.StdEncoding.EncodeToString(imgBytes)
-
 			list = append(list, a)
 		}
 
@@ -175,14 +172,14 @@ func CreateAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
         defer file.Close()
 
         // Upload Cloudinary
-        upload, err := cld.Upload.Upload(
-            r.Context(),
-            file,
-            uploader.UploadParams{
-                Folder:   "/",
-                PublicID: header.Filename,
-            },
-        )
+upload, err := cld.Upload.Upload(
+    r.Context(),
+    file,
+    uploader.UploadParams{
+        PublicID: header.Filename, // root
+    },
+)
+
         if err != nil {
             http.Error(w, "Upload Cloudinary gagal: "+err.Error(), 500)
             return
@@ -240,7 +237,6 @@ func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
 
 		for rows.Next() {
 			var a models.Alat
-			var imgBytes []byte
 
 			err := rows.Scan(
 				&a.ID,
@@ -251,15 +247,13 @@ func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
 				&a.HargaHarian,
 				&a.HargaMingguan,
 				&a.HargaBulanan,
-				&imgBytes,
+				&a.Gambar,
 				&a.Spesifikasi,
 			)
 			if err != nil {
 				w.Write([]byte(err.Error()))
 				return
 			}
-
-			a.Gambar = base64.StdEncoding.EncodeToString(imgBytes)
 
 			list = append(list, a)
 		}
@@ -352,15 +346,21 @@ func DeleteAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
         db.QueryRow(`SELECT gambar FROM alat_pertanian WHERE id = ?`, id).Scan(&imageURL)
 
         // hapus cloudinary (jika ada)
-        if imageURL != "" {
-            // contoh: https://res.cloudinary.com/<cloud>/image/upload/farmequip/nama.jpg
-            parts := strings.Split(imageURL, "/")
-            publicID := strings.TrimSuffix(parts[len(parts)-1], ".jpg")
+if imageURL != "" {
+    parts := strings.Split(imageURL, "/")
+    fileName := parts[len(parts)-1] // contoh: foto.jpg
+    publicID := strings.TrimSuffix(fileName, filepath.Ext(fileName)) // foto
 
-            cld.Upload.Destroy(r.Context(), uploader.DestroyParams{
-                PublicID: "/" + publicID,
-            })
-        }
+    _, err := cld.Upload.Destroy(r.Context(), uploader.DestroyParams{
+        PublicID: publicID,
+    })
+
+    if err != nil {
+        fmt.Println("Gagal delete Cloudinary:", err)
+    }
+}
+
+
 
         _, err := db.Exec(`DELETE FROM alat_pertanian WHERE id = ?`, id)
         if err != nil {
