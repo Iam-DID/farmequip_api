@@ -11,20 +11,25 @@ import (
 func GetKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
 		rows, err := db.Query(`
-            SELECT id, nama_kategori, deskripsi, slug 
-            FROM kategori
-        `)
+			SELECT id, nama_kategori, deskripsi, slug 
+			FROM kategori
+		`)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			http.Error(w, err.Error(), 500)
 			return
 		}
 		defer rows.Close()
 
 		var list []models.Kategori
+
 		for rows.Next() {
 			var k models.Kategori
-			rows.Scan(&k.ID, &k.NamaKategori, &k.Deskripsi, &k.Slug)
+			if err := rows.Scan(&k.ID, &k.NamaKategori, &k.Deskripsi, &k.Slug); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
 			list = append(list, k)
 		}
 
@@ -34,24 +39,25 @@ func GetKategori(db *sql.DB) http.HandlerFunc {
 
 func CreateKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		var k models.Kategori
-		json.NewDecoder(r.Body).Decode(&k)
+		if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
+			http.Error(w, "Gagal membaca request body", 400)
+			return
+		}
 
 		if k.NamaKategori == "" {
-			w.Write([]byte("Nama kategori wajib diisi"))
+			http.Error(w, "Nama kategori wajib diisi", 400)
 			return
 		}
 
 		slug := utils.GenerateSlug(k.NamaKategori)
 
 		_, err := db.Exec(`
-            INSERT INTO kategori (nama_kategori, deskripsi, slug)
-            VALUES (?, ?, ?)
-        `, k.NamaKategori, k.Deskripsi, slug)
-
+			INSERT INTO kategori (nama_kategori, deskripsi, slug)
+			VALUES (?, ?, ?)
+		`, k.NamaKategori, k.Deskripsi, slug)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			http.Error(w, err.Error(), 500)
 			return
 		}
 
@@ -61,26 +67,27 @@ func CreateKategori(db *sql.DB) http.HandlerFunc {
 
 func UpdateKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			w.Write([]byte("ID kategori wajib diisi"))
+			http.Error(w, "ID kategori wajib diisi", 400)
 			return
 		}
 
 		var k models.Kategori
-		json.NewDecoder(r.Body).Decode(&k)
+		if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
+			http.Error(w, "Gagal membaca request body", 400)
+			return
+		}
 
 		slug := utils.GenerateSlug(k.NamaKategori)
 
 		_, err := db.Exec(`
-            UPDATE kategori 
-            SET nama_kategori = ?, deskripsi = ?, slug = ?
-            WHERE id = ?
-        `, k.NamaKategori, k.Deskripsi, slug, id)
-
+			UPDATE kategori 
+			SET nama_kategori = ?, deskripsi = ?, slug = ?
+			WHERE id = ?
+		`, k.NamaKategori, k.Deskripsi, slug, id)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			http.Error(w, err.Error(), 500)
 			return
 		}
 
@@ -90,17 +97,15 @@ func UpdateKategori(db *sql.DB) http.HandlerFunc {
 
 func DeleteKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			w.Write([]byte("ID kategori wajib diisi"))
+			http.Error(w, "ID kategori wajib diisi", 400)
 			return
 		}
 
-		// Hapus kategori berdasarkan id
 		_, err := db.Exec(`DELETE FROM kategori WHERE id = ?`, id)
 		if err != nil {
-			w.Write([]byte(err.Error()))
+			http.Error(w, err.Error(), 500)
 			return
 		}
 

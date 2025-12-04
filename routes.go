@@ -25,11 +25,6 @@ func CorsMiddleware(next http.Handler) http.Handler {
     })
 }
 
-func Setupcld(cld *cloudinary.Cloudinary) {
-    uploadHandler := handlers.NewUploadHandler(cld)
-
-    http.HandleFunc("/upload", uploadHandler.UploadImage)
-}
 
 func SetupRoutes(db *sql.DB, cld *cloudinary.Cloudinary) {
     r := mux.NewRouter()
@@ -58,9 +53,9 @@ func SetupRoutes(db *sql.DB, cld *cloudinary.Cloudinary) {
 
     // Alat
     r.HandleFunc("/alat", handlers.GetAlat(db)).Methods("GET")
-    r.HandleFunc("/alat", handlers.CreateAlat(db, cld)).Methods("POST")   // CLOUDINARY OK
-    r.HandleFunc("/alat", handlers.UpdateAlat(db, cld)).Methods("PUT")   // CLOUDINARY OK
-    r.HandleFunc("/alat", handlers.DeleteAlat(db, cld)).Methods("DELETE") // CLOUDINARY OK
+    r.HandleFunc("/alat", handlers.CreateAlat(db, cld)).Methods("POST")
+    r.HandleFunc("/alat", handlers.UpdateAlat(db, cld)).Methods("PUT")
+    r.HandleFunc("/alat", handlers.DeleteAlat(db, cld)).Methods("DELETE")
 
     // Detail alat
     r.HandleFunc("/alat/{id:[0-9]+}", handlers.GetToolById(db)).Methods("GET")
