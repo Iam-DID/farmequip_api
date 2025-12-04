@@ -15,109 +15,129 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func GetAlat(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+//Pure func
+func mapRowToAlat(rows *sql.Rows) (models.Alat, error) {
+	var a models.Alat
+	err := rows.Scan(
+		&a.ID, &a.NamaAlat, &a.KategoriID, &a.NamaKategori,
+		&a.Deskripsi, &a.HargaHarian, &a.HargaMingguan,
+		&a.HargaBulanan, &a.Gambar, &a.Spesifikasi,
+	)
+	return a, err
+}
 
-		sortParam := r.URL.Query().Get("sort")
-
-		rows, err := db.Query(`
-			SELECT 
-				a.id, a.nama_alat, a.kategori_id, k.nama_kategori,
-				a.deskripsi, a.harga_per_hari, a.harga_per_minggu,
-				a.harga_per_bulan, a.gambar, a.spesifikasi
-			FROM alat_pertanian a
-			JOIN kategori k ON k.id = a.kategori_id
-		`)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		defer rows.Close()
-
-		var list []models.Alat
-
-		for rows.Next() {
-			var a models.Alat
-			err := rows.Scan(&a.ID, &a.NamaAlat, &a.KategoriID, &a.NamaKategori,
-				&a.Deskripsi, &a.HargaHarian, &a.HargaMingguan,
-				&a.HargaBulanan, &a.Gambar, &a.Spesifikasi)
-
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			list = append(list, a)
-		}
-
-		sort.Slice(list, func(i, j int) bool {
-			switch sortParam {
-			case "nama_asc":
-				return list[i].NamaAlat < list[j].NamaAlat
-			case "nama_desc":
-				return list[i].NamaAlat > list[j].NamaAlat
-			case "harga_asc":
-				return list[i].HargaHarian < list[j].HargaHarian
-			case "harga_desc":
-				return list[i].HargaHarian > list[j].HargaHarian
-			case "newest":
-				return list[i].ID > list[j].ID
-			case "oldest":
-				return list[i].ID < list[j].ID
-			default:
-				return list[i].ID < list[j].ID
-			}
-		})
-
-		json.NewEncoder(w).Encode(list)
+//HOF
+func jsonResponder(w http.ResponseWriter) func(data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	return func(data interface{}) {
+		json.NewEncoder(w).Encode(data)
 	}
+}
+
+//Pure func: transformasi rows → slice
+func mapRows(rows *sql.Rows) ([]models.Alat, error) {
+	var list []models.Alat
+	for rows.Next() {
+		a, err := mapRowToAlat(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, a)
+	}
+	return list, nil
+}
+
+
+func GetAlat(db *sql.DB) http.HandlerFunc {
+
+    // HOF
+    createSorter := func(sortParam string, alatList []models.Alat) func(i, j int) bool {
+        switch sortParam {
+        case "nama_asc":
+            return func(i, j int) bool { return alatList[i].NamaAlat < alatList[j].NamaAlat }
+        case "nama_desc":
+            return func(i, j int) bool { return alatList[i].NamaAlat > alatList[j].NamaAlat }
+        case "harga_asc":
+            return func(i, j int) bool { return alatList[i].HargaHarian < alatList[j].HargaHarian }
+        case "harga_desc":
+            return func(i, j int) bool { return alatList[i].HargaHarian > alatList[j].HargaHarian }
+        case "newest":
+            return func(i, j int) bool { return alatList[i].ID > alatList[j].ID }
+        case "oldest":
+            return func(i, j int) bool { return alatList[i].ID < alatList[j].ID }
+        }
+        return func(i, j int) bool { return alatList[i].ID < alatList[j].ID }
+    }
+
+    return func(w http.ResponseWriter, r *http.Request) {
+        
+        respondJSON := jsonResponder(w)
+
+        sortParam := r.URL.Query().Get("sort")
+
+        rows, err := db.Query(`
+            SELECT 
+                a.id, a.nama_alat, a.kategori_id, k.nama_kategori,
+                a.deskripsi, a.harga_per_hari, a.harga_per_minggu,
+                a.harga_per_bulan, a.gambar, a.spesifikasi
+            FROM alat_pertanian a
+            JOIN kategori k ON k.id = a.kategori_id
+        `)
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
+        defer rows.Close()
+
+        //transform
+        alatList, err := mapRows(rows)
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
+
+        //sort
+        sort.Slice(alatList, createSorter(sortParam, alatList))
+        respondJSON(alatList)
+    }
 }
 
 func GetToolById(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 
+	return func(w http.ResponseWriter, r *http.Request) {
+		respond := jsonResponder(w)
 		id := mux.Vars(r)["id"]
 
-		rows, err := db.Query(`
-			SELECT 
-				a.id, a.nama_alat, a.kategori_id, k.nama_kategori,
-				a.deskripsi, a.harga_per_hari, a.harga_per_minggu,
-				a.harga_per_bulan, a.gambar, a.spesifikasi
-			FROM alat_pertanian a
-			JOIN kategori k ON a.kategori_id = k.id
-			WHERE a.id = ?
-		`, id)
+        //Pure func
+		queryByID := func(id string) (*sql.Rows, error) {
+			return db.Query(`
+				SELECT 
+					a.id, a.nama_alat, a.kategori_id, k.nama_kategori,
+					a.deskripsi, a.harga_per_hari, a.harga_per_minggu,
+					a.harga_per_bulan, a.gambar, a.spesifikasi
+				FROM alat_pertanian a
+				JOIN kategori k ON a.kategori_id = k.id
+				WHERE a.id = ?
+			`, id)
+		}
 
+		rows, err := queryByID(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		defer rows.Close()
 
-		var list []models.Alat
-
-		for rows.Next() {
-			var a models.Alat
-			err := rows.Scan(&a.ID, &a.NamaAlat, &a.KategoriID, &a.NamaKategori,
-				&a.Deskripsi, &a.HargaHarian, &a.HargaMingguan,
-				&a.HargaBulanan, &a.Gambar, &a.Spesifikasi)
-
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			list = append(list, a)
-		}
-
-		if len(list) == 0 {
-			json.NewEncoder(w).Encode([]models.Alat{})
+		list, err := mapRows(rows)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
 			return
 		}
 
-		json.NewEncoder(w).Encode(list)
+		respond(list)
 	}
 }
+
 
 func CreateAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -163,55 +183,42 @@ func CreateAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
 }
 
 func GetAlatBySlug(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 
-		slug := mux.Vars(r)["slug"]
-		if slug == "" {
-			http.Error(w, "Slug kategori wajib diisi", 400)
-			return
+	queryBySlug := func(slug string) func() (*sql.Rows, error) {
+		return func() (*sql.Rows, error) {
+			return db.Query(`
+				SELECT 
+					a.id, a.nama_alat, a.kategori_id, k.nama_kategori,
+					a.deskripsi, a.harga_per_hari, a.harga_per_minggu,
+					a.harga_per_bulan, a.gambar, a.spesifikasi
+				FROM alat_pertanian a
+				JOIN kategori k ON a.kategori_id = k.id
+				WHERE k.slug = ?
+			`, slug)
 		}
+	}
 
-		rows, err := db.Query(`
-			SELECT 
-				a.id, a.nama_alat, a.kategori_id, k.nama_kategori,
-				a.deskripsi, a.harga_per_hari, a.harga_per_minggu,
-				a.harga_per_bulan, a.gambar, a.spesifikasi
-			FROM alat_pertanian a
-			JOIN kategori k ON a.kategori_id = k.id
-			WHERE k.slug = ?
-		`, slug)
+	return func(w http.ResponseWriter, r *http.Request) {
+		respond := jsonResponder(w)
+		slug := mux.Vars(r)["slug"]
 
+		rows, err := queryBySlug(slug)()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		defer rows.Close()
 
-		var list []models.Alat
-
-		for rows.Next() {
-			var a models.Alat
-			err := rows.Scan(&a.ID, &a.NamaAlat, &a.KategoriID, &a.NamaKategori,
-				&a.Deskripsi, &a.HargaHarian, &a.HargaMingguan,
-				&a.HargaBulanan, &a.Gambar, &a.Spesifikasi)
-
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-
-			list = append(list, a)
-		}
-
-		if len(list) == 0 {
-			w.Write([]byte("Tidak ada alat dalam kategori ini"))
+		list, err := mapRows(rows)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
 			return
 		}
 
-		json.NewEncoder(w).Encode(list)
+		respond(list)
 	}
 }
+
 
 func UpdateAlat(db *sql.DB, cld *cloudinary.Cloudinary) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -42,9 +42,6 @@ func SetupRoutes(db *sql.DB, cld *cloudinary.Cloudinary) {
     // Login
     r.HandleFunc("/login", handlers.Login(db)).Methods("POST")
 
-    // Users
-    r.HandleFunc("/users", handlers.UpdateUser(db)).Methods("PUT")
-
     // Kategori
     r.HandleFunc("/kategori", handlers.GetKategori(db)).Methods("GET")
     r.HandleFunc("/kategori", handlers.CreateKategori(db)).Methods("POST")

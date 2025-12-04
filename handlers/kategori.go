@@ -8,9 +8,32 @@ import (
 	"net/http"
 )
 
+//Pure function mapping
+func MapRowToKategori(rows *sql.Rows) (models.Kategori, error) {
+	var k models.Kategori
+	err := rows.Scan(
+		&k.ID, &k.NamaKategori, &k.Deskripsi, &k.Slug,
+	)
+	return k, err
+}
+
+// Transform rows
+func MapKategoriRows(rows *sql.Rows) ([]models.Kategori, error) {
+	var list []models.Kategori
+	for rows.Next() {
+		k, err := MapRowToKategori(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, k)
+	}
+	return list, nil
+}
+
+
 func GetKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		respondJSON := jsonResponder(w)
 
 		rows, err := db.Query(`
 			SELECT id, nama_kategori, deskripsi, slug 
@@ -22,20 +45,16 @@ func GetKategori(db *sql.DB) http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		var list []models.Kategori
-
-		for rows.Next() {
-			var k models.Kategori
-			if err := rows.Scan(&k.ID, &k.NamaKategori, &k.Deskripsi, &k.Slug); err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			list = append(list, k)
+		list, err := MapKategoriRows(rows)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
 		}
 
-		json.NewEncoder(w).Encode(list)
+		respondJSON(list)
 	}
 }
+
 
 func CreateKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +75,7 @@ func CreateKategori(db *sql.DB) http.HandlerFunc {
 			INSERT INTO kategori (nama_kategori, deskripsi, slug)
 			VALUES (?, ?, ?)
 		`, k.NamaKategori, k.Deskripsi, slug)
+
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -64,6 +84,7 @@ func CreateKategori(db *sql.DB) http.HandlerFunc {
 		w.Write([]byte("Kategori berhasil ditambahkan"))
 	}
 }
+
 
 func UpdateKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +107,7 @@ func UpdateKategori(db *sql.DB) http.HandlerFunc {
 			SET nama_kategori = ?, deskripsi = ?, slug = ?
 			WHERE id = ?
 		`, k.NamaKategori, k.Deskripsi, slug, id)
+
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -98,10 +120,10 @@ func UpdateKategori(db *sql.DB) http.HandlerFunc {
 func DeleteKategori(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
-		if id == "" {
-			http.Error(w, "ID kategori wajib diisi", 400)
-			return
-		}
+        if id == "" {
+            http.Error(w, "ID kategori wajib diisi", 400)
+            return
+        }
 
 		_, err := db.Exec(`DELETE FROM kategori WHERE id = ?`, id)
 		if err != nil {
@@ -112,3 +134,4 @@ func DeleteKategori(db *sql.DB) http.HandlerFunc {
 		w.Write([]byte("Kategori berhasil dihapus"))
 	}
 }
+
